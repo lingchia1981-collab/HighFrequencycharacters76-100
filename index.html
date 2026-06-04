@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="referrer" content="no-referrer">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>互動式中文生字閃卡 - 客製高頻字版</title>
+    <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #4a90e2;
+            --bg-color: #f5f7fa;
+            --trace-color: #27ae60; 
+            --stroke-main: #e74c3c; 
+            --nav-blue: #007bff; 
+            --shuffle-green: #28a745; 
+        }
+
+        html, body {
+            height: 100vh; margin: 0; padding: 0; overflow: hidden;
+            background-color: var(--bg-color);
+            font-family: Arial, sans-serif;
+        }
+
+        body { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+
+        .card-container {
+            width: min(95vw, 450px); height: 740px; 
+            perspective: 1500px; margin-bottom: 10px;
+        }
+
+        .card {
+            width: 100%; height: 100%; position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 10px 35px rgba(0,0,0,0.15); border-radius: 25px;
+        }
+
+        .card.is-flipped { transform: rotateY(180deg); }
+
+        .card-face {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            -webkit-backface-visibility: hidden; backface-visibility: hidden; 
+            display: flex; flex-direction: column;
+            align-items: center; background: white; border-radius: 25px;
+            padding: 20px; box-sizing: border-box;
+            border: 1px solid #eee;
+        }
+
+        .card-front { justify-content: center; cursor: pointer; }
+        #front-word { 
+            font-family: "標楷體", "DFKai-SB", "BiauKai", serif;
+            font-size: 150px; color: #333; line-height: 1; margin: 0; 
+        }
+        #front-simplified { font-size: 40px; color: #999; margin-top: 10px; font-family: "Microsoft JhengHei", sans-serif; }
+
+        .card-back { transform: rotateY(180deg); gap: 8px; cursor: default; justify-content: space-between; }
+        
+        .stroke-area {
+            width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; margin-top: auto; margin-bottom: auto;
+        }
+
+        #stroke-iframe {
+            width: 100%; height: 240px; border: 1px solid #eee; border-radius: 15px; display: none;
+        }
+
+        .writer-wrapper {
+            width: 180px; height: 180px; 
+            background-color: #fffaf0; border: 1px solid #eee; border-radius: 10px; display: none;
+        }
+        #writer-container { width: 100%; height: 100%; }
+
+        .click-hint {
+            font-size: 13px; color: var(--trace-color); font-weight: bold;
+            text-align: center; display: none; animation: bounce 1.5s infinite;
+        }
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+
+        .action-btns { display: flex; justify-content: center; align-items: center; gap: 10px; width: 100%; }
+        
+        .audio-btn {
+            background: white; color: var(--primary-color); border: 1.5px solid var(--primary-color);
+            border-radius: 20px; cursor: pointer; font-family: Arial; font-weight: bold;
+            font-size: 11px; padding: 6px 14px; transition: 0.2s;
+            white-space: nowrap;
+        }
+        .audio-btn:hover { background: #f0f7ff; }
+
+        .slider-container {
+            display: flex; flex-direction: column; align-items: center; gap: 2px;
+            min-width: 90px;
+        }
+        input[type=range] { width: 90px; cursor: pointer; }
+        .slider-label { font-size: 10px; color: var(--primary-color); font-weight: bold; }
+
+        /* 確保生字拼音不會呈現斜體 */
+        .back-pinyin-main { font-size: 22px; color: #7f8c8d; font-family: Arial; font-weight: bold; text-align: center; white-space: pre-line; line-height: 1.4; font-style: normal; }
+        .back-meaning { font-size: 22px; color: var(--stroke-main); font-weight: bold; text-align: center; }
+
+        .sentence-box {
+            width: 100%; background: #f0f4f8; padding: 12px 15px; border-radius: 12px;
+            border-left: 5px solid var(--primary-color);
+            display: flex; flex-direction: column; gap: 4px; margin-top: auto;
+            max-height: 180px; overflow-y: auto; box-sizing: border-box;
+        }
+        .s-english { font-size: 13px; color: #7f8c8d; font-style: italic; }
+        .s-chinese { font-size: 17px; color: #333; font-weight: bold; line-height: 1.3; }
+        /* 確保例句拼音不會呈現斜體 */
+        .s-pinyin { font-size: 13px; color: #444; line-height: 1.2; font-style: normal; }
+        
+        .sentence-item { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; }
+        .sentence-item:last-child { margin-bottom: 0; }
+
+        .controls { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .btn-group { display: flex; gap: 12px; align-items: center; }
+        .nav-btn { padding: 10px 20px; border: none; background: var(--nav-blue); color: white; border-radius: 10px; cursor: pointer; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="card-container">
+        <div id="card" class="card">
+            <div class="card-face card-front" onclick="flipCard()">
+                <div id="front-word"></div>
+                <div id="front-simplified"></div>
+            </div>
+            
+            <div class="card-face card-back" onclick="flipCard()">
+                <div id="click-hint" class="click-hint">Click the green button to watch the stroke order animation</div>
+
+                <div class="stroke-area" onclick="event.stopPropagation()">
+                    <iframe id="stroke-iframe"></iframe>
+                    
+                    <div id="writer-wrapper" class="writer-wrapper">
+                        <div id="writer-container"></div>
+                    </div>
+                    
+                    <button class="audio-btn" onclick="speakText(event, 'word')">🔊 Speak word</button>
+
+                    <div id="internal-btns" class="action-btns">
+                        <button class="audio-btn" onclick="playAnimation()">▶️ Play</button>
+                        
+                        <div class="slider-container">
+                            <input type="range" id="speed-slider" min="1.0" max="3.0" step="0.2" value="1.0" oninput="updateSpeedFromSlider(this.value)">
+                            <span class="slider-label" id="speed-label">Speed: 1.0x</span>
+                        </div>
+
+                        <button class="audio-btn" style="border-color:var(--trace-color); color:var(--trace-color);" onclick="startTrace()">✍️ Trace</button>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="back-pinyin-main" id="back-pinyin"></div>
+                    <div class="back-meaning" id="back-meaning"></div>
+                </div>
+
+                <div class="sentence-box" onclick="event.stopPropagation()">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 4px;">
+                        <span style="font-size: 12px; color: var(--primary-color); font-weight: bold;">Practice</span>
+                        <button class="audio-btn" style="padding: 2px 8px; font-size: 10px;" onclick="speakText(event, 'sentence')">🔊 Speak All</button>
+                    </div>
+                    <div id="sentences-wrapper"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <div class="btn-group">
+            <button class="nav-btn" onclick="prevCard()">上一張</button>
+            <button class="nav-btn" style="background:var(--shuffle-green)" onclick="shuffleData()">Shuffle</button>
+            <button class="nav-btn" onclick="nextCard()">下一張</button>
+        </div>
+        <div id="counter" style="color:#7f8c8d; font-size:14px; margin-top:5px;"></div>
+    </div>
+
+    <script>
+        let vocabularyData = [
+            { w: '然', p: 'rán', sim: '然', pos: '連接詞 / 副詞', m: '', s: ['我們下個星期先去台北玩，然後去台中。'], sp: ['Wǒmen xià gè xīngqī xiān qù Táiběi wán, ránhòu qù Táizhōng.'], t: ['We will go to Taipei for fun next week first, and then go to Taichung.'] },
+            { w: '如', p: 'rú', sim: '如', pos: '連接詞 / 動詞', m: '', s: ['如果明天下雨，我們就不能出去玩。'], sp: ['Rúguǒ míngtiān xià yǔ, wǒmen jiù bùnéng chūqù wán.'], t: ['If it rains tomorrow, we won\'t be able to go out to play.'] },
+            { w: '三', p: 'sān', sim: '三', pos: '數詞', m: '', s: ['這裡有三本書。'], sp: ['Zhèli yǒu sān běn shū.'], t: ['There are three books here.'] },
+            { w: '發', p: 'fā', sim: '發', pos: '動詞', m: '', s: ['我發現這裡有一隻小鳥寶寶。'], sp: ['Wǒ fāxiàn zhèli yǒu yī zhī xiǎoniǎo bǎobao.'], t: ['I found out there is a baby bird here.'] },
+            { w: '事', p: 'shì', sim: '事', pos: '名詞', m: '', s: ['請問你打電話給我，有什麼事嗎？'], sp: ['Qǐngwèn nǐ dǎ diànhuà gěi wã, yãu shénme shì ma?'], t: ['Excuse me, is there anything matter that you called me?'] },
+            { w: '對', p: 'duì', sim: '對', pos: '介系詞 / 形容詞', m: '', s: ['今天的功課我都寫對了！'], sp: ['Jīntiān de gōngkè wǒ dōu xiě duì le!'], t: ['I did all of today\'s homework correctly!'] },
+            { w: '還', p: 'hái\nhuán', sim: '還', pos: '副詞 / 動詞', m: '', s: ['晚上十點了，弟弟的功課還沒寫完。', '這本書要還給圖書館了。'], sp: ['Wǎnshang shí diǎn le, dìdi de gōngkè hái méi xiě wán.', 'Zhè běn shū yào huán gěi túshūguǎn le.'], t: ['It is already 10 p.m., and younger brother still hasn\'t finished his homework.', 'This book needs to be returned to the library.'] },
+            { w: '沒', p: 'méi', sim: '沒', pos: '副詞 / 動詞', m: '', s: ['我今天早上沒吃早餐，現在很餓。'], sp: ['Wǒ jīntiān zǎoshàng méi chī zǎocān, xiànzài hěn è.'], t: ['I didn\'t eat breakfast this morning, and now I am very hungry.'] },
+            { w: '同', p: 'tóng', sim: '同', pos: '形容詞 / 介系詞', m: '', s: ['他是我的高中同學。'], sp: ['Tā shì wǒ de gāozhōng tóngxué.'], t: ['He is my high school classmate.'] },
+            { w: '高', p: 'gāo', sim: '高', pos: '形容詞', m: '', s: ['弟弟今年長高了五公分。'], sp: ['Dìdi jīnnián zhǎng gāo le wǔ gōngfēn.'], t: ['Younger brother grew five centimeters taller this year.'] },
+            { w: '道', p: 'dào', sim: '道', pos: '動詞 / 名詞', m: '', s: ['我知道這家飯館的菜很好吃。'], sp: ['Wǒ zhīdào zhè jiā fànguǎn de cài hěn hǎo chī.'], t: ['I know the food at this restaurant is very delicious.'] },
+            { w: '師', p: 'shī', sim: '師', pos: '名詞', m: '', s: ['老師說我寫的字很美。'], sp: ['Lǎoshī shuō wǒ xiě de zì hěn měi.'], t: ['The teacher said my handwriting is beautiful.'] },
+            { w: '氣', p: 'qì', sim: '氣', pos: '名詞', m: '', s: ['今天的天氣很好，空氣也很好。'], sp: ['Jīntiān de tiānqì hěn hǎo, kōngqì yě hěn hǎo.'], t: ['The weather is very good today, and the air is also very good.'] },
+            { w: '種', p: 'zhǒng\nzhòng', sim: '種', pos: '量詞/名詞/動詞', m: '', s: ['超市裡有很多種新鮮的水果。', '爺爺在花園裡種了一些漂亮的花。'], sp: ['Chāoshì lǐ yǒu hěn duō zhǒng xīnxiān de shuǐguǒ.', 'Yéye zài huāyuán lǐ zhòng le yīxiē piàoliang de huā.'], t: ['There are many kinds of fresh fruits in the supermarket.', 'Grandpa planted some beautiful flowers in the garden.'] },
+            { w: '而', p: 'ér', sim: '而', pos: '連接詞', m: '', s: ['台灣的夏天熱而且濕。'], sp: ['Táiwān de xiàtiān rè érqiě shī.'], t: ['Summer in Taiwan is hot and humid.'] },
+            { w: '回', p: 'huí', sim: '回', pos: '動詞 / 量詞', m: '', s: ['我下個月要回國看我的爸爸媽媽。'], sp: ['Wǒ xià gè yuè yào huíguó kàn wǒ de bàba māma.'], t: ['I am going back to my country next month to visit my parents.'] },
+            { w: '二', p: 'èr', sim: '二', pos: '數詞', m: '', s: ['我的房間在二樓。'], sp: ['Wǒ de fángjiān zài èr lóu.'], t: ['My room is on the second floor.'] },
+            { w: '開', p: 'kāi', sim: '開', pos: '動詞', m: '', s: ['他開車開得很快，這樣不太好。'], sp: ['Tā kāichē kāi de hěn kuài, zhèyàng bú tai hǎo.'], t: ['He drives very fast, which is not very good.'] },
+            { w: '於', p: 'yú', sim: '于', pos: '介系詞', m: '', s: ['妹妹終於學會騎自行車了。'], sp: ['Mèimei zhōngyú xuéhuì qí zìxíngchē le.'], t: ['Younger sister finally learned how to ride a bicycle.'] },
+            { w: '頭', p: 'tóu', sim: '头', pos: '名詞 / 量詞', m: '', s: ['我弟弟的頭有點大大的，很可愛！'], sp: ['Wǒ dìdi de tóu yǒudiǎn dàdà de, hěn kě\'ài!'], t: ['My younger brother\'s head is a bit big, very cute!'] },
+            { w: '現', p: 'xiàn', sim: '现', pos: '副詞 / 動詞', m: '', s: ['現在是三點半，火車馬上就要開了。'], sp: ['Xiànzài shì sān diǎn bàn, huǒchē mǎshàng jiù yào kāi le.'], t: ['It is 3:30 now; the train is about to leave.'] },
+            { w: '做', p: 'zuò', sim: '做', pos: '動詞', m: '', s: ['媽媽正在廚房為大家做晚飯。'], sp: ['Māma zhèngzài chúfáng wèi dàjiā zuò wǎnfàn.'], t: ['Mom is currently making dinner for everyone in the kitchen.'] },
+            { w: '文', p: 'wén', sim: '文', pos: '名詞', m: '', s: ['中國的文字很有意思！'], sp: ['Zhōngguó de wénzì hěn yǒu yìsi!'], t: ['Chinese characters are very interesting!'] },
+            { w: '媽', p: 'mā', sim: '妈', pos: '名詞', m: '', s: ['我媽媽很喜歡唱歌。'], sp: ['Wǒ māma hěn xǐhuān chànggē.'], t: ['My mom likes singing very much.'] },
+            { w: '體', p: 'tǐ', sim: '体', pos: '名詞', m: '', s: ['要多動，身體就會好。'], sp: ['Yào duō dòng, shēntǐ jiù huì hǎo.'], t: ['Move more, and your body will be healthy.'] }
+        ];
+
+        const xiongWords = ['媽', '道', '然', '體']; 
+        let currentIndex = 0;
+        let writer;
+        let currentSpeed = 1.0;
+        let currentAudio = null; 
+        let audioTimeout = null; 
+
+        function updateCard() {
+            const item = vocabularyData[currentIndex];
+            document.getElementById('card').classList.remove('is-flipped');
+            
+            let displayWord = item.w;
+            document.getElementById('front-word').innerText = displayWord;
+            document.getElementById('front-simplified').innerText = (item.sim && item.sim !== item.w) ? `(${item.sim})` : '';
+            document.getElementById('back-pinyin').innerText = item.p;
+            document.getElementById('back-meaning').innerText = item.m;
+            document.getElementById('counter').innerText = `${currentIndex + 1} / ${vocabularyData.length}`;
+
+            const wrapper = document.getElementById('sentences-wrapper');
+            wrapper.innerHTML = '';
+            item.s.forEach((sentence, idx) => {
+                const div = document.createElement('div');
+                div.className = 'sentence-item';
+                div.innerHTML = `
+                    <div class="s-english">${item.t[idx] || ''}</div>
+                    <div class="s-chinese">${sentence}</div>
+                    <div class="s-pinyin">${item.sp[idx] || ''}</div>
+                `;
+                wrapper.appendChild(div);
+            });
+
+            const iframe = document.getElementById('stroke-iframe');
+            const writerWrap = document.getElementById('writer-wrapper');
+            const internalBtns = document.getElementById('internal-btns');
+            const clickHint = document.getElementById('click-hint');
+
+            if (xiongWords.includes(item.w)) {
+                iframe.style.display = 'block';
+                writerWrap.style.display = 'none';
+                internalBtns.style.display = 'none';
+                clickHint.style.display = 'block'; 
+                iframe.src = `https://gsyan888.github.io/html5_fun/html5_stroke_parts/html5_stroke_parts.html?words=${item.w}`;
+                writer = null;
+            } else {
+                iframe.style.display = 'none';
+                writerWrap.style.display = 'block';
+                internalBtns.style.display = 'flex';
+                clickHint.style.display = 'none'; 
+                initWriter(displayWord);
+            }
+        }
+
+        function initWriter(char) {
+            const container = document.getElementById('writer-container');
+            container.innerHTML = ''; 
+            writer = HanziWriter.create('writer-container', char, {
+                width: 180, height: 180, padding: 10,
+                showOutline: true, strokeColor: '#e74c3c', radicalColor: '#16a085', outlineColor: '#eee',
+                strokeAnimationSpeed: currentSpeed, 
+                delayBetweenStrokes: 200 / currentSpeed, 
+                charDataLoader: (char, onComplete) => {
+                    fetch(`https://cdn.jsdelivr.net/npm/hanzi-writer-data-tw@1.0/${char}.json`)
+                        .then(res => res.json()).then(onComplete)
+                        .catch(() => fetch(`https://cdn.jsdelivr.net/npm/hanzi-writer-data@2.0/${char}.json`).then(res => res.json()).then(onComplete));
+                }
+            });
+        }
+
+        function updateSpeedFromSlider(val) {
+            currentSpeed = parseFloat(val);
+            document.getElementById('speed-label').innerText = 'Speed: ' + currentSpeed.toFixed(1) + 'x';
+            if (writer) {
+                initWriter(vocabularyData[currentIndex].w); 
+                writer.animateCharacter(); 
+            }
+        }
+
+        function flipCard() {
+            const card = document.getElementById('card');
+            card.classList.toggle('is-flipped');
+            if(card.classList.contains('is-flipped') && writer) {
+                setTimeout(() => writer.animateCharacter(), 500);
+            }
+        }
+
+        function playAnimation() { if (writer) writer.animateCharacter(); }
+        function startTrace() { if (writer) writer.quiz(); }
+
+        function speakText(e, type) {
+            e.stopPropagation();
+            
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio = null;
+            }
+            if (audioTimeout) {
+                clearTimeout(audioTimeout);
+                audioTimeout = null;
+            }
+
+            const item = vocabularyData[currentIndex];
+
+            if (type === 'sentence') {
+                // 處理所有例句的發音優化
+                let processedSentences = item.s.map((sentence, idx) => {
+                    let text = sentence.replace(/和/g, '漢'); // 保留原本對「和」的優化
+
+                    // 特殊處理：「還」字的句子發音優化
+                    if (item.w === '還') {
+                        let pinyin = item.sp[idx] ? item.sp[idx].toLowerCase() : '';
+                        if (pinyin.includes('huán')) {
+                            text = text.replace(/還/g, '環');
+                        } else if (pinyin.includes('hái')) {
+                            text = text.replace(/還/g, '孩');
+                        }
+                    }
+
+                    // 特殊處理：「種」字的句子發音優化
+                    if (item.w === '種') {
+                        let pinyin = item.sp[idx] ? item.sp[idx].toLowerCase() : '';
+                        if (pinyin.includes('zhòng')) {
+                            text = text.replace(/種/g, '眾');
+                        } else if (pinyin.includes('zhǒng')) {
+                            text = text.replace(/種/g, '腫');
+                        }
+                    }
+
+                    return text;
+                });
+
+                let processedText = processedSentences.join(' '); 
+                const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(processedText)}&tl=zh-TW&client=tw-ob`;
+                currentAudio = new Audio(url);
+                currentAudio.play().catch(err => console.error("音訊播放失敗：", err));
+                return;
+            }
+
+            if (type === 'word') {
+                if (item.w === '種') {
+                    const syllables = ['腫', '眾'];
+                    const url1 = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(syllables[0])}&tl=zh-TW&client=tw-ob`;
+                    const url2 = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(syllables[1])}&tl=zh-TW&client=tw-ob`;
+
+                    currentAudio = new Audio(url1);
+                    currentAudio.onended = function() {
+                        audioTimeout = setTimeout(() => {
+                            currentAudio = new Audio(url2);
+                            currentAudio.play().catch(err => console.error("第二音節播放失敗：", err));
+                        }, 200);
+                    };
+                    currentAudio.play().catch(err => console.error("第一音節播放失敗：", err));
+                } else if (item.w === '還') {
+                    const syllables = ['孩', '環'];
+                    const url1 = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(syllables[0])}&tl=zh-TW&client=tw-ob`;
+                    const url2 = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(syllables[1])}&tl=zh-TW&client=tw-ob`;
+
+                    currentAudio = new Audio(url1);
+                    currentAudio.onended = function() {
+                        audioTimeout = setTimeout(() => {
+                            currentAudio = new Audio(url2);
+                            currentAudio.play().catch(err => console.error("第二音節播放失敗：", err));
+                        }, 200);
+                    };
+                    currentAudio.play().catch(err => console.error("第一音節播放失敗：", err));
+                } else {
+                    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(item.w)}&tl=zh-TW&client=tw-ob`;
+                    currentAudio = new Audio(url);
+                    currentAudio.play().catch(err => console.error("音訊播放失敗：", err));
+                }
+            }
+        }
+
+        function shuffleData() { vocabularyData.sort(() => Math.random() - 0.5); currentIndex = 0; updateCard(); }
+        function prevCard() { if (currentIndex > 0) { currentIndex--; updateCard(); } }
+        function nextCard() { if (currentIndex < vocabularyData.length - 1) { currentIndex++; updateCard(); } }
+
+        window.onload = updateCard;
+    </script>
+</body>
+</html>
